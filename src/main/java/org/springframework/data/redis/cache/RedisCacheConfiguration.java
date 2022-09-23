@@ -17,6 +17,7 @@ package org.springframework.data.redis.cache;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Random;
 import java.util.function.Consumer;
 
 import org.springframework.cache.Cache;
@@ -43,6 +44,7 @@ import org.springframework.util.Assert;
 public class RedisCacheConfiguration {
 
 	private final Duration ttl;
+	private final int ttlRandomnessPercentage;
 	private final boolean cacheNullValues;
 	private final CacheKeyPrefix keyPrefix;
 	private final boolean usePrefix;
@@ -52,12 +54,15 @@ public class RedisCacheConfiguration {
 
 	private final ConversionService conversionService;
 
+	private final Random random = new Random();
+
 	@SuppressWarnings("unchecked")
-	private RedisCacheConfiguration(Duration ttl, Boolean cacheNullValues, Boolean usePrefix, CacheKeyPrefix keyPrefix,
-			SerializationPair<String> keySerializationPair, SerializationPair<?> valueSerializationPair,
-			ConversionService conversionService) {
+	private RedisCacheConfiguration(Duration ttl, int ttlRandomnessPercentage, Boolean cacheNullValues,
+									Boolean usePrefix, CacheKeyPrefix keyPrefix, SerializationPair<String> keySerializationPair,
+									SerializationPair<?> valueSerializationPair, ConversionService conversionService) {
 
 		this.ttl = ttl;
+		this.ttlRandomnessPercentage = ttlRandomnessPercentage;
 		this.cacheNullValues = cacheNullValues;
 		this.usePrefix = usePrefix;
 		this.keyPrefix = keyPrefix;
@@ -71,6 +76,8 @@ public class RedisCacheConfiguration {
 	 * <dl>
 	 * <dt>key expiration</dt>
 	 * <dd>eternal</dd>
+	 * <dt>key expiration randomness percentage</dt>
+	 * <dd>none</dd>
 	 * <dt>cache null values</dt>
 	 * <dd>yes</dd>
 	 * <dt>prefix cache keys</dt>
@@ -97,6 +104,8 @@ public class RedisCacheConfiguration {
 	 * <dl>
 	 * <dt>key expiration</dt>
 	 * <dd>eternal</dd>
+	 * <dt>key expiration randomness percentage</dt>
+	 * <dd>none</dd>
 	 * <dt>cache null values</dt>
 	 * <dd>yes</dd>
 	 * <dt>prefix cache keys</dt>
@@ -123,7 +132,7 @@ public class RedisCacheConfiguration {
 
 		registerDefaultConverters(conversionService);
 
-		return new RedisCacheConfiguration(Duration.ZERO, true, true, CacheKeyPrefix.simple(),
+		return new RedisCacheConfiguration(Duration.ZERO, 0, true, true, CacheKeyPrefix.simple(),
 				SerializationPair.fromSerializer(RedisSerializer.string()),
 				SerializationPair.fromSerializer(RedisSerializer.java(classLoader)), conversionService);
 	}
@@ -135,11 +144,26 @@ public class RedisCacheConfiguration {
 	 * @return new {@link RedisCacheConfiguration}.
 	 */
 	public RedisCacheConfiguration entryTtl(Duration ttl) {
+		return entryTtl(ttl, 0);
+	}
+
+	/**
+	 * Set the ttl to apply for cache entries. Use {@link Duration#ZERO} to declare an eternal cache.
+	 * Add a random percentage  to the ttl
+	 *
+	 * @param ttl must not be {@literal null}.
+	 * @param ttlRandomnessPercentage must be in [0, 100]. Express the amount of randomness in percentage to add to the current ttl.
+	 * @return new {@link RedisCacheConfiguration}.
+	 */
+	public RedisCacheConfiguration entryTtl(Duration ttl, int ttlRandomnessPercentage) {
 
 		Assert.notNull(ttl, "TTL duration must not be null");
+		if (ttlRandomnessPercentage < 0 || ttlRandomnessPercentage > 100) {
+			throw new IllegalArgumentException("TTL randomness percentage should be greater than or equal to 0.");
+		}
 
-		return new RedisCacheConfiguration(ttl, cacheNullValues, usePrefix, keyPrefix, keySerializationPair,
-				valueSerializationPair, conversionService);
+		return new RedisCacheConfiguration(ttl, ttlRandomnessPercentage, cacheNullValues, usePrefix, keyPrefix,
+				keySerializationPair, valueSerializationPair, conversionService);
 	}
 
 	/**
@@ -169,8 +193,8 @@ public class RedisCacheConfiguration {
 
 		Assert.notNull(cacheKeyPrefix, "Function for computing prefix must not be null");
 
-		return new RedisCacheConfiguration(ttl, cacheNullValues, true, cacheKeyPrefix, keySerializationPair,
-				valueSerializationPair, conversionService);
+		return new RedisCacheConfiguration(ttl, ttlRandomnessPercentage, cacheNullValues, true, cacheKeyPrefix,
+				keySerializationPair, valueSerializationPair, conversionService);
 	}
 
 	/**
@@ -182,8 +206,8 @@ public class RedisCacheConfiguration {
 	 * @return new {@link RedisCacheConfiguration}.
 	 */
 	public RedisCacheConfiguration disableCachingNullValues() {
-		return new RedisCacheConfiguration(ttl, false, usePrefix, keyPrefix, keySerializationPair, valueSerializationPair,
-				conversionService);
+		return new RedisCacheConfiguration(ttl, ttlRandomnessPercentage, false, usePrefix, keyPrefix,
+				keySerializationPair, valueSerializationPair, conversionService);
 	}
 
 	/**
@@ -195,8 +219,8 @@ public class RedisCacheConfiguration {
 	 */
 	public RedisCacheConfiguration disableKeyPrefix() {
 
-		return new RedisCacheConfiguration(ttl, cacheNullValues, false, keyPrefix, keySerializationPair,
-				valueSerializationPair, conversionService);
+		return new RedisCacheConfiguration(ttl, ttlRandomnessPercentage, cacheNullValues, false, keyPrefix,
+				keySerializationPair, valueSerializationPair, conversionService);
 	}
 
 	/**
@@ -209,8 +233,8 @@ public class RedisCacheConfiguration {
 
 		Assert.notNull(conversionService, "ConversionService must not be null");
 
-		return new RedisCacheConfiguration(ttl, cacheNullValues, usePrefix, keyPrefix, keySerializationPair,
-				valueSerializationPair, conversionService);
+		return new RedisCacheConfiguration(ttl, ttlRandomnessPercentage, cacheNullValues, usePrefix, keyPrefix,
+				keySerializationPair, valueSerializationPair, conversionService);
 	}
 
 	/**
@@ -223,8 +247,8 @@ public class RedisCacheConfiguration {
 
 		Assert.notNull(keySerializationPair, "KeySerializationPair must not be null");
 
-		return new RedisCacheConfiguration(ttl, cacheNullValues, usePrefix, keyPrefix, keySerializationPair,
-				valueSerializationPair, conversionService);
+		return new RedisCacheConfiguration(ttl, ttlRandomnessPercentage, cacheNullValues, usePrefix, keyPrefix,
+				keySerializationPair, valueSerializationPair, conversionService);
 	}
 
 	/**
@@ -237,8 +261,8 @@ public class RedisCacheConfiguration {
 
 		Assert.notNull(valueSerializationPair, "ValueSerializationPair must not be null");
 
-		return new RedisCacheConfiguration(ttl, cacheNullValues, usePrefix, keyPrefix, keySerializationPair,
-				valueSerializationPair, conversionService);
+		return new RedisCacheConfiguration(ttl, ttlRandomnessPercentage, cacheNullValues, usePrefix, keyPrefix,
+				keySerializationPair, valueSerializationPair, conversionService);
 	}
 
 	/**
@@ -285,9 +309,21 @@ public class RedisCacheConfiguration {
 
 	/**
 	 * @return The expiration time (ttl) for cache entries. Never {@literal null}.
+	 * When ttlRandomnessPercentage is in (0, 100], add a random value to the current ttl,
+	 * in an interval between 0 and the percentage of the ttl declared.
 	 */
 	public Duration getTtl() {
-		return ttl;
+		long ttlInMillis = ttl.toMillis();
+		Duration result = ttl;
+		if (ttlRandomnessPercentage != 0) {
+			try {
+				long randomness = random.nextLong(Math.multiplyExact(ttlInMillis / 100, ttlRandomnessPercentage));
+				long randomisedTtl = Math.addExact(randomness, ttlInMillis);
+				result = Duration.ofMillis(randomisedTtl);
+			} catch (IllegalArgumentException | ArithmeticException ignored) {
+			}
+		}
+		return result;
 	}
 
 	/**
